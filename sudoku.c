@@ -9,6 +9,7 @@
  * TODO
  * - fix bug in reverting guesses when running
  *   :w | make sudoku | !./sudoku puzzles/2_dim/hard/input_0.txt
+ *   - re-implement history and prune possibilities
  * - implement debug macros
  *   - replace asserts
  *   - make solution only non-debug output
