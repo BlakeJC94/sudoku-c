@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,7 +5,16 @@
 #include <math.h>
 #include <assert.h>
 
-#define ORDER 3
+/**
+ * TODO
+ * - fix bug in reverting guesses when running
+ *   :w | make sudoku | !./sudoku puzzles/2_dim/hard/input_0.txt
+ * - implement debug macros
+ *   - replace asserts
+ *   - make solution only non-debug output
+ * - implement proper project structure and update makefile
+ **/
+#define ORDER 2
 #define MAX_FILE_LINE_LEN 256
 #define MAX_DIGIT_CHARS 3
 #define MAX_STEPS 50
@@ -243,57 +251,15 @@ int check_sudoku(int* p_sudoku) {
 
     return sudoku_status;
 }
-// OLD WORKING VERSION
-/* int check_sudoku(int* p_sudoku) { */
-/*     /1* Returns 0/1 if valid and incomplete/complete, -1 if invalid *1/ */
-/*     int sudoku_status = 1; */
-/*     int all_zero = 1; */
-
-/*     int digit_count[3*N_DIGITS]; */
-/*     int* p_rcb; */
-
-/*     for (int s_idx = 0; s_idx < TOTAL; s_idx++) { */
-/*         // reset digit counter */
-/*         for (int digit = 0; digit < 3*N_DIGITS; digit++) { */
-/*             digit_count[digit] = 0; */
-/*         } */
-/*         // load entries at row/col/blk of s_idx */
-/*         p_rcb = sudoku_get_rcb(p_sudoku, s_idx); */
-/*         for (int i = 0; i < 3; i++) { */
-/*             // count digit in selected index */
-/*             digit_count[ i*N_DIGITS + p_rcb[0] ]++; */
-/*             // check if digit at s_idx has been filled */
-/*             if ((sudoku_status == 1) && (p_rcb[0] == 0)) { */
-/*                 sudoku_status = 0; */
-/*             } */
-/*             // count other digits in row/col/blk */
-/*             for (int j = 0; j < SIZE-1; j++) { */
-/*                 digit_count[ i*N_DIGITS + p_rcb[1+i*(SIZE-1)+j] ]++; */
-/*             } */
-/*             // erase digit 0 counts */
-/*             digit_count[i*N_DIGITS] = 0; */
-/*             // validate counts of non-zero digits at s_idx */
-/*             for (int digit = 1; digit <= MAX_DIGIT; digit++) { */
-/*                 if (digit_count[ i*N_DIGITS + digit ] > 1) { */
-/*                     //DEBUG */
-/*                     /1* if (i == 0) printf("Repeated %d in row %d\n", digit, i); *1/ */
-/*                     /1* if (i == 1) printf("Repeated %d in col %d\n", digit, i); *1/ */
-/*                     /1* if (i == 2) printf("Repeated %d in blk %d\n", digit, i); *1/ */
-/*                     sudoku_status = -1; */
-/*                 } */
-/*             } */
-/*         } */
-/*     } */
-/*     if (all_zero == 1) sudoku_status = -1; */
-
-/*     return sudoku_status; */
-/* } */
-
 
 
 void History_set_sudoku_poss(struct History *hist, int *p_sudoku,
                              int *p_poss) {
+    //DEBUG
+    printf("    CALLED Hist_set_sudoku_poss, hist->g_idx = %d\n", hist->guess_idx);
     hist->guess_idx++;
+    //DEBUG
+    printf("      INCREASED hist->g_idx = %d\n", hist->guess_idx);
 
     int offset_sudoku = hist->guess_idx * (hist->S1 + hist->S2);
     for (int N1 = 0; N1 < hist->S1; N1++) {
@@ -331,6 +297,10 @@ void History_destroy(struct History *hist) {
     free(hist);
 }
 int* History_get_sudoku_poss(struct History *hist, int pop_mode) {
+    //DEBUG
+    printf("    CALLED History_get_sudoku_poss, hist->g_idx = %d, pop_mode = %d\n",
+           hist->guess_idx, pop_mode);
+
     static int sudoku_poss[TOTAL + TOTAL*N_DIGITS];
     int *p_sudoku_poss = sudoku_poss;
 
@@ -345,13 +315,14 @@ int* History_get_sudoku_poss(struct History *hist, int pop_mode) {
     }
 
     if (pop_mode == 1) {
-    /* if (guess_idx == -1) { */
         // pop current sudoku/poss from top of stack
         if (hist->guess_idx == 0) {
             printf("ERROR : cannot pop from hist stack when guess_idx is 0\n");
             exit(1);
+        } else {
+            hist->guess_idx--;
+            printf("      DECREASED hist->g_idx = %d\n", hist->guess_idx);
         }
-        hist->guess_idx--;
     }
 
     return p_sudoku_poss;
@@ -475,10 +446,6 @@ int solve_sudoku(int* p_sudoku, struct History *hist) {
         guess_mode = 0;
         int change_made = solve_sudoku_step(p_sudoku, p_poss, guess_mode);
 
-        //DEBUG
-        /* printf("\n  change_made = %d\n", change_made); */
-        /* print_sudoku(p_sudoku); */
-
         if (change_made == 0){
 
             status = check_sudoku(p_sudoku);
@@ -492,12 +459,22 @@ int solve_sudoku(int* p_sudoku, struct History *hist) {
                 printf("UNRESOLVED: MAKING GUESS\n");
                 guess_mode = 1;
                 change_made = solve_sudoku_step(p_sudoku, p_poss, guess_mode);
+                if (change_made == 2) {
+                    History_set_sudoku_poss(hist, p_sudoku, p_poss);
+                } else {
+                    printf("NEVER REACHED\n");
+                    exit(1);
+                }
             } else if (status == -1) {
-                // puzzle is barked, pop hist and restore
+                // puzzle is borked, pop hist and restore
                 printf("INVALID: RESTORING PREVIOUS GUESS\n");
                 solve_sudoku_revert(p_sudoku, p_poss, hist);
             }
         }
+
+        //DEBUG
+        printf("\n  change_made = %d\n", change_made);
+        print_sudoku(p_sudoku);
 
         if (step == MAX_STEPS) printf("REACHED MAX_STEPS :/\n");
     }
