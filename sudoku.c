@@ -7,18 +7,20 @@
 
 /**
  * TODO
- * - fix bug in reverting guesses when running
+ * - [_] fix bug in reverting guesses when running
  *   :w | make sudoku | !./sudoku puzzles/2_dim/hard/input_0.txt
- *   - re-implement history and prune possibilities
- * - implement debug macros
- *   - replace asserts
- *   - make solution only non-debug output
- * - implement proper project structure and update makefile
+ *   - [X] re-implement history
+ *   - [_] revise push/pull of checkpoints, prune possibilities
+ *     - [X] add hist to arg_in for solve_step()
+ * - [_] implement debug macros
+ *   - [_] replace asserts
+ *   - [_] make solution only non-debug output
+ * - [_] implement proper project structure and update makefile
  **/
 #define ORDER 2
 #define MAX_FILE_LINE_LEN 256
 #define MAX_DIGIT_CHARS 3
-#define MAX_STEPS 50
+#define MAX_STEPS 20
 #define MAX_GUESS_IND 15
 #define DEFAULT_FILE "./demo.txt"
 
@@ -29,10 +31,8 @@
 #define N_DIGITS (SIZE+1)
 
 struct History {
-    int data[MAX_GUESS_IND*TOTAL*(TOTAL*N_DIGITS)];
-    int S0;
-    int S1;
-    int S2;
+    int sudoku_stack[MAX_GUESS_IND*TOTAL];
+    int guess_stack[MAX_GUESS_IND*N_DIGITS];
     int guess_idx;
 };
 
@@ -254,42 +254,38 @@ int check_sudoku(int* p_sudoku) {
 }
 
 
-void History_set_sudoku_poss(struct History *hist, int *p_sudoku,
-                             int *p_poss) {
+void History_push_checkpoint(struct History *hist, int *p_sudoku,
+                             int *p_guess, int s_idx) {
+
     //DEBUG
-    printf("    CALLED Hist_set_sudoku_poss, hist->g_idx = %d\n", hist->guess_idx);
+    printf("    CALLED History_push_checkpoint, hist->g_idx = %d\n", hist->guess_idx);
     hist->guess_idx++;
     //DEBUG
     printf("      INCREASED hist->g_idx = %d\n", hist->guess_idx);
 
-    int offset_sudoku = hist->guess_idx * (hist->S1 + hist->S2);
-    for (int N1 = 0; N1 < hist->S1; N1++) {
-        hist->data[offset_sudoku + N1] = p_sudoku[N1];
+    int offset = hist->guess_idx;
+    for (int s_idx = 0; s_idx < TOTAL; s_idx++) {
+        hist->sudoku_stack[offset + s_idx] = p_sudoku[s_idx];
     }
-
-    int offset_poss = hist->guess_idx * (hist->S1 + hist->S2) + hist->S1;
-    for (int N2 = 0; N2 < hist->S2; N2++) {
-        hist->data[offset_poss + N2] = p_poss[N2];
+    hist->guess_stack[offset + TOTAL] = s_idx;  // save location of guess
+    for (int digit = 1; digit < N_DIGITS; digit++) {
+        hist->guess_stack[offset + TOTAL + digit] = p_guess[digit];
     }
 }
 struct History *History_create(int* p_sudoku){
     struct History *hist = malloc(sizeof(struct History));
     assert(hist != NULL);
 
-    hist->S0 = MAX_GUESS_IND;
-    hist->S1 = TOTAL;
-    hist->S2 = TOTAL*N_DIGITS;
-    /* hist->data = malloc(sizeof(int) * hist->S0 * hist->S1 * hist->S2); */
-
-
-    int poss[TOTAL*N_DIGITS];
-    for (int i = 0; i < hist->S2; i++) {
-        poss[i] = -1;
+    // create dummy guess and index for initial guess_idx (NEVER ACCESSED)
+    int dummy_idx = -1;
+    int dummy_guess[N_DIGITS];
+    for (int i = 0; i < N_DIGITS; i++) {
+        dummy_guess[i] = -1;
     }
-    int *p_poss = poss;
+    int *p_dummy_guess = dummy_guess;
 
     hist->guess_idx = -1;
-    History_set_sudoku_poss(hist, p_sudoku, p_poss);
+    History_push_checkpoint(hist, p_sudoku, p_dummy_guess, dummy_idx);
 
     return hist;
 }
@@ -297,22 +293,22 @@ void History_destroy(struct History *hist) {
     assert(hist != NULL);
     free(hist);
 }
-int* History_get_sudoku_poss(struct History *hist, int pop_mode) {
+/* int* History_get_sudoku_poss(struct History *hist, int pop_mode) { */
+int* History_pull_checkpoint(struct History *hist, int pop_mode) {
     //DEBUG
-    printf("    CALLED History_get_sudoku_poss, hist->g_idx = %d, pop_mode = %d\n",
+    printf("    CALLED History_pull_checkpoint, hist->g_idx = %d, pop_mode = %d\n",
            hist->guess_idx, pop_mode);
 
-    static int sudoku_poss[TOTAL + TOTAL*N_DIGITS];
-    int *p_sudoku_poss = sudoku_poss;
+    static int checkpoint[TOTAL + TOTAL*N_DIGITS];
+    int *p_checkpoint = checkpoint;
 
-    int offset_sudoku = hist->guess_idx*(hist->S1 + hist->S2);
-    for (int N1 = 0; N1 < hist->S1; N1++) {
-        p_sudoku_poss[N1] = hist->data[offset_sudoku + N1];
+    int offset = hist->guess_idx;
+    for (int s_idx = 0; s_idx < TOTAL; s_idx++) {
+        p_checkpoint[s_idx] = hist->sudoku_stack[offset + s_idx];
     }
-
-    int offset_poss = hist->guess_idx*(hist->S1 + hist->S2) + hist->S1;
-    for (int N2 = 0; N2 < hist->S2; N2++) {
-        p_sudoku_poss[TOTAL + N2] = hist->data[offset_poss + N2];
+    p_checkpoint[TOTAL] = hist->guess_stack[offset + TOTAL];  // load guess loc
+    for (int digit = 1; digit < N_DIGITS; digit++) {
+        p_checkpoint[TOTAL + digit] = hist->guess_stack[offset + TOTAL + digit];
     }
 
     if (pop_mode == 1) {
@@ -326,94 +322,147 @@ int* History_get_sudoku_poss(struct History *hist, int pop_mode) {
         }
     }
 
-    return p_sudoku_poss;
+    return p_checkpoint;
 }
-void History_print(struct History *hist) {
-    printf("History current guess_idx : %d \n", hist->guess_idx);
+/** UNUSED
+ * void History_print(struct History *hist) {
+ *     printf("History current guess_idx : %d \n", hist->guess_idx);
+ *
+ *     int pop_mode = 0;
+ *     int* p_checkpoint = History_pull_checkpoint(hist, pop_mode);
+ *
+ *     static int sudoku[TOTAL];
+ *     int *p_sudoku = sudoku;
+ *     for (int i=0; i < TOTAL; i++) {
+ *         p_sudoku[i] = p_checkpoint[i];
+ *     }
+ *     printf("Current sudoku : \n");
+ *     print_sudoku(p_sudoku);
+ *
+ *     static int poss[TOTAL*N_DIGITS];
+ *     int *p_poss = poss;
+ *     for (int i=0; i < TOTAL*N_DIGITS; i++) {
+ *         p_poss[i] = p_checkpoint[TOTAL + i];
+ *     }
+ *     print_poss(p_poss);
+ * }
+**/
 
-    int pop_mode = 0;
-    int* p_sudoku_poss = History_get_sudoku_poss(hist, pop_mode);
-
-    static int sudoku[TOTAL];
-    int *p_sudoku = sudoku;
-    for (int i=0; i < TOTAL; i++) {
-        p_sudoku[i] = p_sudoku_poss[i];
-    }
-    printf("Current sudoku : \n");
-    print_sudoku(p_sudoku);
-
-    static int poss[TOTAL*N_DIGITS];
-    int *p_poss = poss;
-    for (int i=0; i < TOTAL*N_DIGITS; i++) {
-        p_poss[i] = p_sudoku_poss[TOTAL + i];
-    }
-    print_poss(p_poss);
-}
 
 
-
-void solve_sudoku_revert(int *p_sudoku, int *p_poss, struct History *hist) {
+void solve_sudoku_revert(int *p_sudoku, int *p_guess, struct History *hist) {
     int pop_mode = 1;
-    int* p_sudoku_poss = History_get_sudoku_poss(hist, pop_mode);
-    for (int i=0; i < TOTAL; i++) {
-        p_sudoku[i] = p_sudoku_poss[i];
+    int *p_checkpoint;
+
+    int n_guess = 0;
+    // go back to last checkpoint with another available branch
+    while (n_guess == 0) {
+        p_checkpoint = History_pull_checkpoint(hist, pop_mode); // reduces g_idx
+
+        for (int digit=1; digit < N_DIGITS; digit++) {
+            n_guess += p_checkpoint[TOTAL + digit];
+        }
     }
-    for (int i=0; i < TOTAL*N_DIGITS; i++) {
-        p_poss[i] = p_sudoku_poss[TOTAL + i];
+    //DEBUG
+    printf("REVERTED CHECKPOINT (guess_idx is now %d)\n", hist->guess_idx);
+    for (int s_idx=0; s_idx < TOTAL; s_idx++) {
+        p_sudoku[s_idx] = p_checkpoint[s_idx];
     }
-    printf("REVERTED TO LAST CHECKPOINT (guess_idx is now %d)\n", hist->guess_idx);
 }
-int solve_sudoku_step(int *p_sudoku, int *p_poss, int guess_mode) {
+int* poss_get_guess(int s_idx, int *p_poss){
+    /* Returns n_poss at s_idx [0] and possibilities at s_idx [1,..,N_DIGITS] */
+    static int guess[1+N_DIGITS];
+    int* p_guess = guess;
+
+    p_guess[0] = 0;  // count of possibilities at s_idx
+    for (int digit = 1; digit < N_DIGITS; digit++) {
+        p_guess[0] += p_poss[s_idx*N_DIGITS + digit];
+        p_guess[digit] = p_poss[s_idx*N_DIGITS + digit];
+    }
+
+    return p_guess;
+}
+int fill_idx(int *p_guess) {
+    /* Return last possible digit in guess */
+    int fill = 0;
+    for (int digit = 1; digit < N_DIGITS; digit++) {
+        if (p_guess[digit] == 1) {
+            fill = digit;
+        }
+    }
+    return fill;
+}
+int solve_sudoku_step(int *p_sudoku, int *p_poss, struct History *hist) {
+    /* Loops over sudoku and matches possibilities, guesses if specified */
     int change_made = 0;
-    int n_poss = 0;
+    int* p_guess;
+    int n_guess = 0;
     int fill = 0;
     // loop through each s_idx
     for (int s_idx = 0; s_idx < TOTAL; s_idx++) {
-        if (p_poss[s_idx*N_DIGITS] > -1) {
-            n_poss = 0;
-            fill = 0;
-            for (int digit = 1; digit < SIZE+1; digit++) {
-                n_poss += p_poss[s_idx*N_DIGITS + digit];
-                if (p_poss[s_idx*N_DIGITS + digit] == 1) fill = digit;
-            }
+        //DEBUG
+        printf("   solve_step: s_idx = %d, p_sudoku[s_idx] = %d\n",
+               s_idx, p_poss[s_idx*N_DIGITS]);
+        if (p_sudoku[s_idx] == 0) {
+            p_guess = poss_get_guess(s_idx, p_poss);
+            n_guess = p_guess[0];
+            //DEBUG
+            printf("   solve_step: s_idx = %d, n_guess = %d\n",
+                   s_idx, n_guess);
 
-            // if an s_idx has 1 possibility, make change, set change_made = 1
-            if ((guess_mode == 0) && n_poss == 1) {
-                // DEBUG
-                /* printf("    guess_mode = %d, changing %d from %d to %d\n", */
-                /*        guess_mode, s_idx, p_sudoku[s_idx], fill); */
-                /* for (int digit = 1; digit < SIZE+1; digit++) { */
-                /*     printf("        digit = %d, possibility = %d\n", */
-                /*            digit, p_poss[s_idx*N_DIGITS + digit]); */
-                /* } */
-
+            if (n_guess == 1) {
+                /* p_sudoku[s_idx] = fill_idx(p_guess, guess_mode); */
+                /* change_made = 1; */
+                fill = fill_idx(p_guess);
+                printf("   solve_step: s_idx = %d, %d --> %d\n",
+                       s_idx, p_sudoku[s_idx], fill);
                 p_sudoku[s_idx] = fill;
                 change_made = 1;
             }
-            if ((guess_mode == 1) && n_poss > 1) {
-                // fill in last possibility of first available index, break
-                p_poss[s_idx*N_DIGITS + fill] = 0;
+        }
+    }
+    return change_made;
+}
+int solve_sudoku_guess(int *p_sudoku, int *p_poss, struct History *hist) {
+    int guess_made = 0;
+    int* p_guess;
+    int n_guess = 0;
+    int fill = 0;
+
+    for (int s_idx = 0; s_idx < TOTAL; s_idx++) {
+        if (p_poss[s_idx*N_DIGITS] > -1) {
+            // s_idx marked with some possibilities available
+            p_guess = poss_get_guess(s_idx, p_poss);
+            n_guess = p_guess[0];
+            if (n_guess > 1) {
+                fill = fill_idx(p_guess);
+                // remove from possibilities, mark branch as active
+                p_guess[fill] = 0;
+                // record remaining branches (come back to this state and
+                // follow another branch if active branch is invalid)
+                History_push_checkpoint(hist, p_sudoku, p_guess, s_idx);
+                // make change and follow active branch
                 p_sudoku[s_idx] = fill;
-                change_made = 2;
+                guess_made = 1;
+                printf("BREAK GUESS LOOP\n");
                 break;
             }
         }
-        // if all s_idx have 0 or >1 possibility, leave change_made = 0
     }
-    return change_made;
+    return guess_made;
 }
 int* solve_sudoku_get_poss(int *p_sudoku) {
     static int poss[TOTAL*N_DIGITS];
     int *p_poss = poss;
     for (int i=0; i<TOTAL*N_DIGITS; i++) {
-        poss[i] = -1;
+        poss[i] = 0;
     }
 
     int *p_rcb;
     for (int s_idx = 0; s_idx < TOTAL; s_idx++) {
+        poss[s_idx*N_DIGITS] = s_idx;
         if (p_sudoku[s_idx] == 0) {
             // mark s_idx in poss array
-            poss[s_idx*N_DIGITS] = s_idx;
             for (int digit = 1; digit <= MAX_DIGIT; digit++) {
                 //DEBUG
                 /* printf("        digit = %d\n", digit); */
@@ -427,27 +476,34 @@ int* solve_sudoku_get_poss(int *p_sudoku) {
         }
 
         // DEBUG
-        /* for (int digit = 1; digit < SIZE+1; digit++) { */
-        /*     printf("        digit = %d, possibility = %d\n", */
-        /*            digit, p_poss[s_idx*N_DIGITS + digit]); */
+        /* if (p_poss[s_idx*N_DIGITS] > -1) { */
+        /*     printf("        (idx %d) \n", s_idx); */
+        /*     for (int digit = 1; digit < SIZE+1; digit++) { */
+        /*         printf("          digit = %d, possibility = %d\n", */
+        /*                digit, p_poss[s_idx*N_DIGITS + digit]); */
+        /*     } */
         /* } */
     }
     return p_poss;
 }
+/* void print_poss() { */
+/* } */
 int solve_sudoku(int* p_sudoku, struct History *hist) {
+    /* Driver for solver loop, returns -1/0 if output is unsolved/solved */
     int solved_flag = -1;
     int status = 0;
-    int guess_mode = 0;
+    int step_made = 0;
+    int guess_made = 0;
 
-    for (int step = 0; step < MAX_STEPS; step++) {
+    for (int step = 1; step <= MAX_STEPS; step++) {
         printf("STARTING STEP %d\n", step);
 
         int* p_poss = solve_sudoku_get_poss(p_sudoku);
 
-        guess_mode = 0;
-        int change_made = solve_sudoku_step(p_sudoku, p_poss, guess_mode);
+        step_made = solve_sudoku_step(p_sudoku, p_poss, hist);
+        printf("\n  TRACE ---- step_made = %d\n", step_made);
 
-        if (change_made == 0){
+        if (step_made == 0){
 
             status = check_sudoku(p_sudoku);
             if (status == 1) {
@@ -458,14 +514,7 @@ int solve_sudoku(int* p_sudoku, struct History *hist) {
             } else if (status == 0) {
                 // puzzle is unsolved, make a guess and push to hist
                 printf("UNRESOLVED: MAKING GUESS\n");
-                guess_mode = 1;
-                change_made = solve_sudoku_step(p_sudoku, p_poss, guess_mode);
-                if (change_made == 2) {
-                    History_set_sudoku_poss(hist, p_sudoku, p_poss);
-                } else {
-                    printf("NEVER REACHED\n");
-                    exit(1);
-                }
+                guess_made = solve_sudoku_guess(p_sudoku, p_poss, hist);
             } else if (status == -1) {
                 // puzzle is borked, pop hist and restore
                 printf("INVALID: RESTORING PREVIOUS GUESS\n");
@@ -474,7 +523,7 @@ int solve_sudoku(int* p_sudoku, struct History *hist) {
         }
 
         //DEBUG
-        printf("\n  change_made = %d\n", change_made);
+        printf("\n  TRACE ---- STEP STATUS = %d\n", step_made + guess_made);
         print_sudoku(p_sudoku);
 
         if (step == MAX_STEPS) printf("REACHED MAX_STEPS :/\n");
@@ -515,8 +564,9 @@ int main(int argc, char** argv) {
     }
 
 
-    printf("SOLVING ... \n\n");
     struct History *hist = History_create(p_sudoku);
+    printf("CREATED HISTORY RECORD \n\n");
+    printf("SOLVING ... \n\n");
     status = solve_sudoku(p_sudoku, hist);
     if (status == -1) {
         printf("COULDN'T SOLVE PUZZLE :(\n");
