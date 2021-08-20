@@ -1,12 +1,19 @@
 # sudoku-c
-Practice project to learn about pointers and arrays in C
+Practice project to learn about pointers, macros, and project structure in C
 
-## Set up and usage
+## Install
 
 ```bash
 ~/Workspace$ git clone https://github.com/BlakeJC94/sudoku-c && cd sudoku-c
 ~/Workspace/sudoku-c$ make sudoku
-~/Workspace/sudoku-c$ ./sudoku [path to sudoku puzzle]
 ```
 
 To get debug output, remove `-DNDEBUG` from `CFLAGS` in `Makefile`.
+
+
+## Usage
+
+To use program (e.g.),
+```bash
+~/Workspace/sudoku-c$ ./sudoku puzzles/3_dim/easy/input_0.txt
+```

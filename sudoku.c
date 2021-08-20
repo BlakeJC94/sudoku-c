@@ -3,7 +3,6 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
-#include <assert.h>
 
 #include "dbg.h"  // Add -DNDEBUG in CFLAGS to disable debug output
 
@@ -15,7 +14,7 @@
 #define MAX_FILE_LINE_LEN 256  // max line buffer size for reading file
 #define MAX_DIGIT_CHARS 1      // max number of digits per number
 
-#define MAX_ITER 20
+#define MAX_ITER 2000
 #define MAX_GUESS_IND 15
 
 #define SIZE (ORDER*ORDER)
@@ -83,6 +82,7 @@ error:
     for (int i = 0; i < 1 + 3*(SIZE-1); i++) {
         p_rcb[i] = -1;
     }
+    exit(1);
     return p_rcb;
 }
 
@@ -154,7 +154,7 @@ int* read_sudoku(char* filename) {
     }
 
     FILE* file = fopen(filename, "r");
-    assert(file != NULL);
+    check((file != NULL), "Failed to load file %s", filename);
 
     char numstr[MAX_DIGIT_CHARS + 1];
     int numstr_i = 0;
@@ -171,7 +171,9 @@ int* read_sudoku(char* filename) {
                 numstr[numstr_i] = line[i];
                 numstr_i++;
                 // keep hard limit on number of chars per number
-                assert(numstr_i < MAX_DIGIT_CHARS);
+                check((numstr_i <= MAX_DIGIT_CHARS),
+                      "Number with chars > MAX_DIGIT_CHARS (%d) found in %s",
+                      MAX_DIGIT_CHARS, filename);
             } else {
                 if (numstr_i > 0) {
                     // non-num char encountered after >1 num chars
@@ -183,10 +185,13 @@ int* read_sudoku(char* filename) {
             }
         }
     }
-    assert(s_idx == TOTAL);
+    fclose(file);
+    check((s_idx == TOTAL),
+          "Finished reading %s before completing sudoku input", filename);
     return p_sudoku;
+error:
+    exit(1);
 }
-
 int* count_digits(int *p_sudoku, int s_idx) {
     static int digit_count[3*N_DIGITS];
     int *p_digit_count = digit_count;
@@ -271,7 +276,7 @@ void History_push_checkpoint(struct History *hist, int *p_sudoku,
 }
 struct History *History_create(int* p_sudoku){
     struct History *hist = malloc(sizeof(struct History));
-    assert(hist != NULL);
+    check_mem((hist != NULL));
 
     // create dummy guess and index for initial guess_idx (NEVER ACCESSED)
     int dummy_idx = -1;
@@ -285,12 +290,12 @@ struct History *History_create(int* p_sudoku){
     History_push_checkpoint(hist, p_sudoku, p_dummy_guess, dummy_idx);
 
     return hist;
+error:
+    exit(1);
 }
 void History_destroy(struct History *hist) {
-    assert(hist != NULL);
-    free(hist);
+    if (hist != NULL) free(hist);
 }
-/* int* History_get_sudoku_poss(struct History *hist, int pop_mode) { */
 int* History_pull_checkpoint(struct History *hist, int pop_mode) {
     static int checkpoint[TOTAL + TOTAL*N_DIGITS];
     int *p_checkpoint = checkpoint;
@@ -322,32 +327,9 @@ error:
     for (int i=0; i < TOTAL + TOTAL*N_DIGITS; i++) {
         p_checkpoint[i] = -1;
     }
+    exit(1);
     return p_checkpoint;
 }
-/** UNUSED
- * void History_print(struct History *hist) {
- *     printf("History current guess_idx : %d \n", hist->guess_idx);
- *
- *     int pop_mode = 0;
- *     int* p_checkpoint = History_pull_checkpoint(hist, pop_mode);
- *
- *     static int sudoku[TOTAL];
- *     int *p_sudoku = sudoku;
- *     for (int i=0; i < TOTAL; i++) {
- *         p_sudoku[i] = p_checkpoint[i];
- *     }
- *     printf("Current sudoku : \n");
- *     print_sudoku(p_sudoku);
- *
- *     static int poss[TOTAL*N_DIGITS];
- *     int *p_poss = poss;
- *     for (int i=0; i < TOTAL*N_DIGITS; i++) {
- *         p_poss[i] = p_checkpoint[TOTAL + i];
- *     }
- *     print_poss(p_poss);
- * }
-**/
-
 
 
 void solve_sudoku_revert(int *p_sudoku, int *p_guess, struct History *hist) {
@@ -470,8 +452,6 @@ int* solve_sudoku_get_poss(int *p_sudoku) {
     }
     return p_poss;
 }
-/* void print_poss() { */
-/* } */
 int solve_sudoku(int* p_sudoku, struct History *hist) {
     /* Driver for solver loop, returns -1/0 if output is unsolved/solved */
     int solved_flag = -1;
