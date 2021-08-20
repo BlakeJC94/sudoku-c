@@ -8,3 +8,5 @@ Practice project to learn about pointers and arrays in C
 ~/Workspace/sudoku-c$ make sudoku
 ~/Workspace/sudoku-c$ ./sudoku [path to sudoku puzzle]
 ```
+
+To get debug output, remove `-DNDEBUG` from `CFLAGS` in `Makefile`.

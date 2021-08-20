@@ -1,8 +1,11 @@
 P=prg_name
 OBJECTS=
-CFLAGS = -g -Wall -O3
+CFLAGS = -g -Wall -O3 -DNDEBUG
 LDLIBS=
 CC=c99
 
-$(P): $(OBJECTS)
+all: sudoku
+	./sudoku || true
+	./sudoku ./demo.txt
 
+$(P): $(OBJECTS)
