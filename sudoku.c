@@ -10,7 +10,7 @@
  * TODO
  * - [_] implement proper project structure and update makefile
  **/
-#define ORDER 3                // input size (2: 4x4, 3: 9x9, ...)
+#define ORDER 2                // input size (2: 4x4, 3: 9x9, ...)
 #define MAX_FILE_LINE_LEN 256  // max line buffer size for reading file
 #define MAX_DIGIT_CHARS 1      // max number of digits per number
 
@@ -21,6 +21,12 @@
 #define TOTAL (SIZE*SIZE)
 #define MAX_DIGIT (SIZE)
 #define N_DIGITS (SIZE+1)
+
+#ifdef NDEBUG
+#define PRINT_SUDOKUS 0
+#else
+#define PRINT_SUDOKUS 1
+#endif
 
 
 struct History {
@@ -121,26 +127,12 @@ void print_sudoku(int* p_sudoku) {
                 }
             }
             // print element and col separator
-            printf("%d%c", num, v_sep);
+            fprintf(stderr, "%d%c", num, v_sep);
         }
         // print row block separator
         if ((row % ORDER == ORDER-1) && (row < SIZE - 1)) {
-            printf("%s", h_sep);
+            fprintf(stderr, "%s", h_sep);
         }
-    }
-}
-void print_poss(int *p_poss) {
-    int s_idx;
-    for (int i = 0; (i<TOTAL) && (p_poss[i*N_DIGITS] != -1); i++) {
-        s_idx = p_poss[i*N_DIGITS];
-        printf("  Estimates for s_idx %d (row %d, col %d) : ",
-               s_idx, s_idx/SIZE, s_idx%SIZE);
-        for (int digit=1; digit < N_DIGITS; digit++) {
-            if (p_poss[i*N_DIGITS + digit] == 1) {
-                printf("%d ", digit);
-            }
-        }
-        printf("\n");
     }
 }
 
@@ -481,7 +473,10 @@ int solve_sudoku(int* p_sudoku, struct History *hist) {
             }
         }
 
-        /* print_sudoku(p_sudoku);  //DEBUG */
+        if (PRINT_SUDOKUS) {
+            debug("Displaying end of iter %d result", iter);
+            print_sudoku(p_sudoku);  //DEBUG
+        }
         check_debug((iter < MAX_ITER), "REACHED MAX_ITER");
     }
     return solved_flag;
@@ -504,8 +499,10 @@ int main(int argc, char** argv) {
     debug("Reading file %s", filename);
     int* p_sudoku = read_sudoku(filename);
 
-    /* debug("Displaying input "); */
-    /* print_sudoku(p_sudoku); */
+    if (PRINT_SUDOKUS) {
+        debug("Displaying input ");
+        print_sudoku(p_sudoku);
+    }
 
     debug("Checking input ");
     status = check_sudoku(p_sudoku);
@@ -530,8 +527,10 @@ int main(int argc, char** argv) {
     /* } */
     History_destroy(hist);
 
-    debug("Displaying output ");
-    print_sudoku(p_sudoku);
+    if (PRINT_SUDOKUS) {
+        debug("Displaying output ");
+        print_sudoku(p_sudoku);
+    }
 
     return 0;
 error:

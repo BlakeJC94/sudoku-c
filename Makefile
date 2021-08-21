@@ -1,6 +1,6 @@
 P=prg_name
 OBJECTS=
-CFLAGS = -g -Wall -O3 -DNDEBUG
+CFLAGS = -g -Wall -O3
 LDLIBS=
 CC=c99
 
